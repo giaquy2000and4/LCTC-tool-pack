@@ -1,6 +1,6 @@
-# YouTube Video Info Extractor
+# YouTube Video Info Extractor.
 
-**YouTube Video Info Extractor** is a command-line tool written in Python that helps you extract video information and Vietnamese subtitles from one or more YouTube links
+**YouTube Video Info Extractor** is a command-line tool written in Python that helps you extract video information and Vietnamese subtitles from one or more YouTube links.
 
 -----
 
