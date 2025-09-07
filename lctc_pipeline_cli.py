@@ -3,21 +3,27 @@
 
 """
 LCTC Pipeline CLI — style giống transcript.py:
-1) Nhập 1 URL hoặc chọn file .txt nhiều URL (thứ tự link = thứ tự mapping)
+1) Nhập 1 URL hoặc CHỌN FILE .TXT nhiều URL bằng pop-up (thứ tự link = thứ tự mapping)
 2) Nhập số bắt đầu -> tool tự tính số kết thúc theo số link
 3) Hỏi độ dài zero-padding (prefix) cho tên thư mục (vd 3 => LCTC-001)
 4) Tạo loạt LCTC-[start..end] với padding (template .docx chuẩn nếu có Word COM)
 5) Trích phụ đề YouTube (yt-dlp), merge youtube_results.json (không ghi đè)
 6) Tự động lưu sub.txt & info.txt vào LCTC-<n>/<safe_title>_<videoid>/
 
-- Logic tạo folder/template kế thừa từ make_lctc.py  (© bạn)
-- UI/Progress/YouTube extract kế thừa từ transcript.py (© bạn)
+- Logic tạo folder/template kế thừa từ make_lctc.py
+- UI/Progress/YouTube extract kế thừa từ transcript.py
 """
 
-import os, sys, re, json, time, shutil, subprocess, tkinter as tk
-from tkinter import filedialog
+import os, sys, re, json, time, shutil, subprocess
 
-# ===== Colors + UI (từ transcript.py)
+# ---- Đảm bảo SSL certificates khi đóng gói (yt-dlp tải mạng) ----
+try:
+    import certifi
+    os.environ.setdefault("SSL_CERT_FILE", certifi.where())
+except Exception:
+    pass
+
+# ===== Colors + UI (giống transcript.py)
 class Colors:
     HEADER = '\033[95m'
     OKBLUE = '\033[94m'
@@ -49,18 +55,32 @@ def progress_bar(current, total, description="Processing", width=50):
     print(f"\r{Colors.OKBLUE}[{bar}] {percent:6.1f}% | {current}/{total} | {description}{Colors.ENDC}",
           end='', flush=True)
 
-# ===== Helper chọn đường dẫn (từ make_lctc.py)
+# ===== Helper chọn thư mục (lazy import tkinter + fallback)
 def choose_directory_topmost(title: str) -> str:
-    root = tk.Tk()
-    root.withdraw()
-    root.attributes("-topmost", True)
-    dest = filedialog.askdirectory(parent=root, title=title,
-                                   mustexist=True,
-                                   initialdir=os.path.expanduser("~"))
-    root.destroy()
-    return dest
+    # Thử dùng hộp thoại; nếu không có GUI, fallback sang nhập tay
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+        root = tk.Tk()
+        root.withdraw()
+        try:
+            root.attributes("-topmost", True)
+        except Exception:
+            pass
+        dest = filedialog.askdirectory(parent=root, title=title,
+                                       mustexist=True,
+                                       initialdir=os.path.expanduser("~"))
+        root.destroy()
+        if dest:
+            return dest
+    except Exception:
+        pass
+    # Fallback CLI
+    print(f"{Colors.WARNING}Không dùng được hộp thoại. Nhập đường dẫn thư mục đích:{Colors.ENDC}")
+    p = input("> ").strip()
+    return p if p else ""
 
-# ===== Phần LCTC (từ make_lctc.py, có fallback)
+# ===== Phần LCTC (kế thừa từ make_lctc.py, có fallback)
 INVALID = r'[<>:"/\\|?*]'
 SUBFOLDERS = ["TAI NGUYEN", "THUMB"]
 TEMPLATE = "template.docx"
@@ -73,7 +93,7 @@ def _try_create_template_with_word(path: str) -> bool:
         # python-docx để tạo file tạm
         from docx import Document
         doc = Document(); doc.add_paragraph(" "); doc.save(path + ".tmp")
-        # Word COM để SaveAs chuẩn non-compat
+        # Word COM để SaveAs chuẩn non-compat (nếu có)
         import pythoncom, win32com.client as win32
         pythoncom.CoInitialize()
         word = win32.gencache.EnsureDispatch("Word.Application")
@@ -132,7 +152,7 @@ def build_lctc_range(dest_dir: str, start: int, end: int, pad_width: int = 0):
         if not os.path.exists(desc_doc): new_blank_docx(desc_doc)
     return total, created, skipped
 
-# ===== Phần YouTube (từ transcript.py)
+# ===== Phần YouTube (kế thừa từ transcript.py)
 def extract_video_id(url):
     patterns = [
         r'(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})',
@@ -150,6 +170,11 @@ def check_yt_dlp():
         print(f"{Colors.OKGREEN}✓ yt-dlp đã sẵn sàng{Colors.ENDC}")
         return True
     except ImportError:
+        # Nếu đang chạy bản đóng gói (sys.frozen), không thể pip install → báo lỗi để bạn rebuild đúng
+        if getattr(sys, "frozen", False):
+            print(f"{Colors.FAIL}✗ yt-dlp không được đóng gói kèm theo. Hãy rebuild với tham số PyInstaller đúng (xem hướng dẫn).{Colors.ENDC}")
+            return False
+        # Môi trường dev: có thể cài nhanh
         print(f"{Colors.WARNING}yt-dlp chưa có. Đang cài...{Colors.ENDC}")
         try:
             subprocess.check_call([sys.executable, "-m", "pip", "install", "yt-dlp"])
@@ -261,7 +286,7 @@ def save_results_merge(new_results, output_file='youtube_results.json'):
         json.dump(ordered, f, ensure_ascii=False, indent=2)
     print(f"{Colors.OKGREEN}✓ Gộp kết quả (thêm {appended}) vào youtube_results.json{Colors.ENDC}")
 
-# ===== Đọc URL (giữ style transcript.py)
+# ===== Đọc URL (mới): pop-up chọn file .txt; fallback CLI
 def read_urls_from_file(file_path):
     urls = []
     try:
@@ -277,24 +302,36 @@ def read_urls_from_file(file_path):
     return urls
 
 def select_file():
-    print(f"\n{Colors.BOLD}Chọn file .txt chứa URL:{Colors.ENDC}")
-    txts = [f for f in os.listdir('.') if f.lower().endswith('.txt')]
-    if not txts:
-        p = input(f"{Colors.OKCYAN}Không thấy .txt. Nhập đường dẫn: {Colors.ENDC}").strip()
-        return p if p else None
-    for i,f in enumerate(txts,1):
-        print(f"{Colors.OKGREEN}{i}.{Colors.ENDC} {f}")
-    print(f"{Colors.OKGREEN}{len(txts)+1}.{Colors.ENDC} Nhập đường dẫn khác")
+    """
+    MỞ MỘT POP-UP để chọn file .txt chứa URL YouTube.
+    Nếu không dùng được GUI, fallback sang nhập tay đường dẫn.
+    """
+    # Ưu tiên pop-up
     try:
-        ch = int(input(f"\n{Colors.OKCYAN}Chọn (1-{len(txts)+1}): {Colors.ENDC}").strip())
-        if 1<=ch<=len(txts): return txts[ch-1]
-        if ch==len(txts)+1:
-            p = input(f"{Colors.OKCYAN}Đường dẫn: {Colors.ENDC}").strip()
-            return p if p else None
+        import tkinter as tk
+        from tkinter import filedialog
+        root = tk.Tk()
+        root.withdraw()
+        try:
+            root.attributes("-topmost", True)
+        except Exception:
+            pass
+        path = filedialog.askopenfilename(
+            parent=root,
+            title="Chọn file .txt chứa danh sách URL YouTube",
+            filetypes=[("Text files","*.txt"), ("All files","*.*")],
+            initialdir=os.path.expanduser("~")
+        )
+        root.destroy()
+        if path:
+            return path
     except Exception:
         pass
-    print(f"{Colors.FAIL}Lựa chọn không hợp lệ{Colors.ENDC}")
-    return None
+
+    # Fallback CLI nếu pop-up không khả dụng
+    print(f"{Colors.WARNING}Không dùng được hộp thoại. Nhập đường dẫn file .txt:{Colors.ENDC}")
+    p = input("> ").strip()
+    return p if p else None
 
 # ===== Pipeline-specific
 def safe_title(result_title: str) -> str:
@@ -396,7 +433,7 @@ def assign_results_to_lctc(results, dest_dir, start_num, pad_width: int = 0):
 def display_menu():
     print(f"""
 {Colors.BOLD}Chọn một tùy chọn:{Colors.ENDC}
-{Colors.OKGREEN}1.{Colors.ENDC} Chọn file .txt chứa danh sách URL
+{Colors.OKGREEN}1.{Colors.ENDC} Chọn file .txt chứa danh sách URL (MỞ POP-UP)
 {Colors.OKGREEN}2.{Colors.ENDC} Nhập 1 URL trực tiếp
 {Colors.OKGREEN}3.{Colors.ENDC} Thoát
 
@@ -415,7 +452,7 @@ def main():
 
         if choice == '1':
             clear_screen(); print_banner()
-            fp = select_file()
+            fp = select_file()  # <-- mở pop-up chọn .txt
             if not fp:
                 input(f"\n{Colors.FAIL}Không thể chọn file. Enter để quay lại...{Colors.ENDC}")
                 continue
