@@ -15,6 +15,7 @@ LCTC Pipeline CLI — style giống transcript.py:
 """
 
 import os, sys, re, json, time, shutil, subprocess
+import random  # <-- dùng cho thời gian chờ ngẫu nhiên
 
 # ---- Đảm bảo SSL certificates khi đóng gói (yt-dlp tải mạng) ----
 try:
@@ -244,7 +245,16 @@ def get_vietnamese_subtitles_direct(info):
 def get_video_info(url):
     try:
         import yt_dlp
-        ydl_opts = {'quiet': True, 'no_warnings': True, 'extractaudio': False, 'extract_flat': False}
+        # Thêm sleep flag để tránh lỗi 429 và bị gắn cờ bot
+        ydl_opts = {
+            'quiet': True,
+            'no_warnings': True,
+            'extractaudio': False,
+            'extract_flat': False,
+            'sleep_interval': 20,     # nghỉ tối thiểu 20 giây giữa các request/lần tải
+            'max_sleep_interval': 25, # nghỉ tối đa 25 giây (ngẫu nhiên giữa min-max)
+            'retries': 5,             # thử lại tối đa 5 lần khi lỗi tạm thời
+        }
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
             return {
@@ -343,11 +353,17 @@ def process_urls_keep_order(urls):
     KHÁC transcript gốc:
     - Nếu URL đã có trong youtube_results.json => lấy lại entry cũ (không bỏ qua),
       để vẫn đảm bảo kết quả trả về có cùng số phần tử và đúng thứ tự mapping.
+    - Thêm sleep random giữa các video để tránh bị YouTube rate-limit (429),
+      đồng thời ghi log thời gian chờ.
     """
     existing_index, _ = load_existing_index('youtube_results.json')
     results = []
     total = len(urls)
     print(f"\n{Colors.BOLD}Bắt đầu xử lý {total} video(s)...{Colors.ENDC}\n")
+
+    # Thiết lập khoảng thời gian chờ
+    min_sleep = 20
+    max_sleep = 25
 
     for i, url in enumerate(urls, 1):
         progress_bar(i-1, total, f"Video {i}")
@@ -360,12 +376,18 @@ def process_urls_keep_order(urls):
             results.append(r)
             print(f"\n{Colors.OKCYAN}↷ Dùng lại kết quả đã có: {url}{Colors.ENDC}")
             time.sleep(0.05)
-            continue
-        # chưa có -> fetch mới
-        r = get_video_info(url)
-        results.append(r)
-        print(f"\n{Colors.OKBLUE}{'OK' if r.get('status')=='success' else 'Lỗi'} - {url}{Colors.ENDC}")
-        time.sleep(0.05)
+        else:
+            # chưa có -> fetch mới
+            r = get_video_info(url)
+            results.append(r)
+            print(f"\n{Colors.OKBLUE}{'OK' if r.get('status')=='success' else 'Lỗi'} - {url}{Colors.ENDC}")
+            time.sleep(0.05)
+
+        # Nếu còn video phía sau thì nghỉ ngẫu nhiên và ghi log rõ ràng
+        if i < total:
+            wait_time = random.randint(min_sleep, max_sleep)
+            print(f"{Colors.WARNING}⏳ Đợi {wait_time} giây trước khi xử lý video tiếp theo...{Colors.ENDC}")
+            time.sleep(wait_time)
 
     progress_bar(total, total, "Hoàn thành"); print()
     return results
