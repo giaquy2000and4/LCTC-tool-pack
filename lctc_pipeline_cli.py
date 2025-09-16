@@ -17,6 +17,11 @@ LCTC Pipeline CLI — style giống transcript.py:
 import os, sys, re, json, time, shutil, subprocess
 import random  # <-- dùng cho thời gian chờ ngẫu nhiên
 
+# ---- CHẶN KEYLOG TLS gây lỗi PermissionError (sslkeys.txt) ----
+# Một số môi trường đặt SSLKEYLOGFILE trỏ tới nơi không ghi được -> requests/urllib ném PermissionError.
+# Xóa biến này để đảm bảo chạy ổn định (đặc biệt khi đóng gói .exe).
+os.environ.pop("SSLKEYLOGFILE", None)
+
 # ---- Đảm bảo SSL certificates khi đóng gói (yt-dlp tải mạng) ----
 try:
     import certifi
