@@ -442,7 +442,7 @@ def display_menu():
     print(f"""
 {Colors.BOLD}Chọn một tùy chọn:{Colors.ENDC}
 {Colors.OKGREEN}1.{Colors.ENDC} Chọn file .txt chứa danh sách URL (MỞ POP-UP)
-{Colors.OKGREEN}2.{Colors.ENDC} Nhập 1 URL trực tiếp
+{Colors.OKGREEN}2.{Colors.ENDC} Nhập URL trực tiếp
 {Colors.OKGREEN}3.{Colors.ENDC} Thoát
 
 {Colors.OKCYAN}Nhập lựa chọn (1-3): {Colors.ENDC}""", end="")
@@ -469,13 +469,42 @@ def main():
                 input(f"\n{Colors.FAIL}Không có URL hợp lệ. Enter để quay lại...{Colors.ENDC}")
                 continue
 
+
         elif choice == '2':
-            clear_screen(); print_banner()
-            u = input(f"{Colors.OKCYAN}Nhập URL YouTube: {Colors.ENDC}").strip()
-            if not extract_video_id(u):
-                input(f"\n{Colors.FAIL}URL không hợp lệ. Enter để quay lại...{Colors.ENDC}")
+
+            clear_screen();
+            print_banner()
+
+            print(f"{Colors.OKCYAN}Dán các URL YouTube (mỗi URL cách nhau bằng ENTER, dấu phẩy hoặc dấu cách).")
+
+            print(f"Nhấn ENTER trống một lần nữa để kết thúc nhập:{Colors.ENDC}\n")
+
+            # Thu thập nhiều dòng từ người dùng cho tới khi gặp dòng trống
+
+            lines = []
+
+            while True:
+
+                line = input().strip()
+
+                if not line:
+                    break
+
+                lines.append(line)
+
+            raw_text = " ".join(lines)
+
+            # Tách URL theo dấu phẩy, dấu cách hoặc xuống dòng
+
+            candidates = re.split(r'[,\s]+', raw_text)
+
+            urls = [u for u in candidates if extract_video_id(u)]
+
+            if not urls:
+                input(f"\n{Colors.FAIL}Không có URL hợp lệ. Enter để quay lại...{Colors.ENDC}")
+
                 continue
-            urls = [u]
+
 
         elif choice == '3':
             print(f"\n{Colors.OKGREEN}Tạm biệt!{Colors.ENDC}")
