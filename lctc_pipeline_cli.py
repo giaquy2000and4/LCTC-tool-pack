@@ -2,34 +2,32 @@
 # -*- coding: utf-8 -*-
 
 """
-LCTC Pipeline CLI — style giống transcript.py:
+LCTC Pipeline CLI — one-file version
+- GỘP: tạo cấu trúc thư mục (từ make_lctc.py) + xử lý YouTube/ghi phụ đề (từ transcript.py)
+- MỚI: Cho phép đổi TIỀN TỐ (prefix) thay vì cố định 'LCTC' (mặc định vẫn là 'LCTC')
+
+Tính năng chính:
 1) Nhập 1 URL hoặc CHỌN FILE .TXT nhiều URL bằng pop-up (thứ tự link = thứ tự mapping)
 2) Nhập số bắt đầu -> tool tự tính số kết thúc theo số link
-3) Hỏi độ dài zero-padding (prefix) cho tên thư mục (vd 3 => LCTC-001)
-4) Tạo loạt LCTC-[start..end] với padding (template .docx chuẩn nếu có Word COM)
+3) Hỏi tiền tố (prefix) và độ dài zero-padding (vd 3 => <PREFIX>-001)
+4) Tạo loạt <PREFIX>-[start..end] + subfolders + file docx từ template (nếu có)
 5) Trích phụ đề YouTube (yt-dlp), merge youtube_results.json (không ghi đè)
-6) Tự động lưu sub.txt & info.txt vào LCTC-<n>/<safe_title>_<videoid>/
-
-- Logic tạo folder/template kế thừa từ make_lctc.py
-- UI/Progress/YouTube extract kế thừa từ transcript.py
+6) Lưu sub.txt & info.txt vào <PREFIX>-<n>/<safe_title>_<videoid>/
 """
 
-import os, sys, re, json, time, shutil, subprocess
-import random  # <-- dùng cho thời gian chờ ngẫu nhiên
+import os, sys, re, json, time, shutil, subprocess, random
 
-# ---- CHẶN KEYLOG TLS gây lỗi PermissionError (sslkeys.txt) ----
-# Một số môi trường đặt SSLKEYLOGFILE trỏ tới nơi không ghi được -> requests/urllib ném PermissionError.
-# Xóa biến này để đảm bảo chạy ổn định (đặc biệt khi đóng gói .exe).
+# ---- Chặn biến môi trường có thể gây PermissionError (sslkeys) khi tải mạng
 os.environ.pop("SSLKEYLOGFILE", None)
 
-# ---- Đảm bảo SSL certificates khi đóng gói (yt-dlp tải mạng) ----
+# ---- Đảm bảo SSL certificates khi đóng gói (yt-dlp tải mạng)
 try:
     import certifi
     os.environ.setdefault("SSL_CERT_FILE", certifi.where())
 except Exception:
     pass
 
-# ===== Colors + UI (giống transcript.py)
+# ====== UI ======
 class Colors:
     HEADER = '\033[95m'
     OKBLUE = '\033[94m'
@@ -48,7 +46,7 @@ def print_banner():
 {Colors.HEADER}{Colors.BOLD}
 ╔══════════════════════════════════════════════════════════════╗
 ║                      LCTC Pipeline (CLI)                     ║
-║                         (Folder + YT)                        ║
+║                 (Folder Builder + YouTube Sub)               ║
 ╚══════════════════════════════════════════════════════════════╝
 {Colors.ENDC}
 """
@@ -63,7 +61,6 @@ def progress_bar(current, total, description="Processing", width=50):
 
 # ===== Helper chọn thư mục (lazy import tkinter + fallback)
 def choose_directory_topmost(title: str) -> str:
-    # Thử dùng hộp thoại; nếu không có GUI, fallback sang nhập tay
     try:
         import tkinter as tk
         from tkinter import filedialog
@@ -81,12 +78,11 @@ def choose_directory_topmost(title: str) -> str:
             return dest
     except Exception:
         pass
-    # Fallback CLI
     print(f"{Colors.WARNING}Không dùng được hộp thoại. Nhập đường dẫn thư mục đích:{Colors.ENDC}")
     p = input("> ").strip()
     return p if p else ""
 
-# ===== Phần LCTC (kế thừa từ make_lctc.py, có fallback)
+# ====== Cấu trúc thư mục & template (kế thừa make_lctc.py) =====
 INVALID = r'[<>:"/\\|?*]'
 SUBFOLDERS = ["TAI NGUYEN", "THUMB"]
 TEMPLATE = "template.docx"
@@ -95,32 +91,34 @@ def sanitize(name: str) -> str:
     return re.sub(INVALID, "-", name).strip().rstrip(".")
 
 def _try_create_template_with_word(path: str) -> bool:
+    # Ưu tiên tạo chuẩn bằng python-docx; nếu có Word COM sẽ "chuẩn hóa" thêm
     try:
-        # python-docx để tạo file tạm
         from docx import Document
         doc = Document(); doc.add_paragraph(" "); doc.save(path + ".tmp")
-        # Word COM để SaveAs chuẩn non-compat (nếu có)
-        import pythoncom, win32com.client as win32
-        pythoncom.CoInitialize()
-        word = win32.gencache.EnsureDispatch("Word.Application")
-        word.Visible = False
-        docx = word.Documents.Open(os.path.abspath(path + ".tmp"))
-        docx.SaveAs(os.path.abspath(path), FileFormat=16)  # wdFormatXMLDocument
-        docx.Close(False); word.Quit()
-        os.remove(path + ".tmp")
+        try:
+            import pythoncom, win32com.client as win32
+            pythoncom.CoInitialize()
+            word = win32.gencache.EnsureDispatch("Word.Application")
+            word.Visible = False
+            docx = word.Documents.Open(os.path.abspath(path + ".tmp"))
+            docx.SaveAs(os.path.abspath(path), FileFormat=16)  # wdFormatXMLDocument
+            docx.Close(False); word.Quit()
+            os.remove(path + ".tmp")
+        except Exception:
+            # nếu không có Word COM, giữ file .tmp -> .docx từ python-docx
+            shutil.move(path + ".tmp", path)
         return True
     except Exception:
-        # fallback tối giản bằng python-docx nếu có
+        # fallback tối giản
         try:
-            from docx import Document
-            doc = Document(); doc.add_paragraph(" "); doc.save(path)
+            open(path, 'a', encoding='utf-8').close()
             return True
         except Exception:
             return False
 
 def ensure_template():
     if not os.path.exists(TEMPLATE):
-        print(f"{Colors.WARNING}⚠ Không thấy {TEMPLATE}, đang tạo file mẫu...{Colors.ENDC}")
+        print(f"{Colors.WARNING}⚠ Không thấy {TEMPLATE}, đang tạo file mẫu.{Colors.ENDC}")
         ok = _try_create_template_with_word(TEMPLATE)
         if ok:
             print(f"{Colors.OKGREEN}✓ Đã tạo {TEMPLATE}.{Colors.ENDC}")
@@ -131,19 +129,23 @@ def new_blank_docx(dst: str):
     if os.path.exists(TEMPLATE):
         shutil.copyfile(TEMPLATE, dst)
     else:
-        # Nếu không có template, tạo file rỗng để workflow không gãy
         open(dst, 'a', encoding='utf-8').close()
 
-def lctc_name(n: int, pad_width: int = 0) -> str:
-    """Trả về tên thư mục LCTC với padding, vd pad=3 -> LCTC-001"""
-    return f"LCTC-{n:0{pad_width}d}" if pad_width and pad_width > 0 else f"LCTC-{n}"
+# ====== PREFIX DYNAMIC ======
+DEFAULT_PREFIX = "LCTC"
 
-def build_lctc_range(dest_dir: str, start: int, end: int, pad_width: int = 0):
+def make_name(prefix: str, n: int, pad_width: int = 0) -> str:
+    if pad_width and pad_width > 0:
+        return f"{prefix}-{n:0{pad_width}d}"
+    return f"{prefix}-{n}"
+
+def build_range(dest_dir: str, prefix: str, start: int, end: int, pad_width: int = 0):
+    """Tạo <prefix>-start..end + subfolders + docx"""
     ensure_template()
     total = end - start + 1
     created = skipped = 0
     for n in range(start, end + 1):
-        name = lctc_name(n, pad_width)
+        name = make_name(prefix, n, pad_width)
         safe = sanitize(name)
         base = os.path.join(dest_dir, safe)
         if not os.path.exists(base):
@@ -158,7 +160,7 @@ def build_lctc_range(dest_dir: str, start: int, end: int, pad_width: int = 0):
         if not os.path.exists(desc_doc): new_blank_docx(desc_doc)
     return total, created, skipped
 
-# ===== Phần YouTube (kế thừa từ transcript.py)
+# ====== Phần YouTube (kế thừa transcript.py) =====
 def extract_video_id(url):
     patterns = [
         r'(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})',
@@ -176,12 +178,10 @@ def check_yt_dlp():
         print(f"{Colors.OKGREEN}✓ yt-dlp đã sẵn sàng{Colors.ENDC}")
         return True
     except ImportError:
-        # Nếu đang chạy bản đóng gói (sys.frozen), không thể pip install → báo lỗi để bạn rebuild đúng
         if getattr(sys, "frozen", False):
-            print(f"{Colors.FAIL}✗ yt-dlp không được đóng gói kèm theo. Hãy rebuild với tham số PyInstaller đúng (xem hướng dẫn).{Colors.ENDC}")
+            print(f"{Colors.FAIL}✗ yt-dlp không được đóng gói kèm theo. Hãy rebuild với tham số PyInstaller đúng.{Colors.ENDC}")
             return False
-        # Môi trường dev: có thể cài nhanh
-        print(f"{Colors.WARNING}yt-dlp chưa có. Đang cài...{Colors.ENDC}")
+        print(f"{Colors.WARNING}yt-dlp chưa có. Đang cài.{Colors.ENDC}")
         try:
             subprocess.check_call([sys.executable, "-m", "pip", "install", "yt-dlp"])
             print(f"{Colors.OKGREEN}✓ Cài xong yt-dlp{Colors.ENDC}")
@@ -250,15 +250,14 @@ def get_vietnamese_subtitles_direct(info):
 def get_video_info(url):
     try:
         import yt_dlp
-        # Thêm sleep flag để tránh lỗi 429 và bị gắn cờ bot
         ydl_opts = {
             'quiet': True,
             'no_warnings': True,
             'extractaudio': False,
             'extract_flat': False,
-            'sleep_interval': 20,     # nghỉ tối thiểu 20 giây giữa các request/lần tải
-            'max_sleep_interval': 25, # nghỉ tối đa 25 giây (ngẫu nhiên giữa min-max)
-            'retries': 5,             # thử lại tối đa 5 lần khi lỗi tạm thời
+            'sleep_interval': 20,
+            'max_sleep_interval': 25,
+            'retries': 5,
         }
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
@@ -301,7 +300,7 @@ def save_results_merge(new_results, output_file='youtube_results.json'):
         json.dump(ordered, f, ensure_ascii=False, indent=2)
     print(f"{Colors.OKGREEN}✓ Gộp kết quả (thêm {appended}) vào youtube_results.json{Colors.ENDC}")
 
-# ===== Đọc URL (mới): pop-up chọn file .txt; fallback CLI
+# ===== Đọc URL (pop-up hoặc nhập tay)
 def read_urls_from_file(file_path):
     urls = []
     try:
@@ -317,11 +316,6 @@ def read_urls_from_file(file_path):
     return urls
 
 def select_file():
-    """
-    MỞ MỘT POP-UP để chọn file .txt chứa URL YouTube.
-    Nếu không dùng được GUI, fallback sang nhập tay đường dẫn.
-    """
-    # Ưu tiên pop-up
     try:
         import tkinter as tk
         from tkinter import filedialog
@@ -342,8 +336,6 @@ def select_file():
             return path
     except Exception:
         pass
-
-    # Fallback CLI nếu pop-up không khả dụng
     print(f"{Colors.WARNING}Không dùng được hộp thoại. Nhập đường dẫn file .txt:{Colors.ENDC}")
     p = input("> ").strip()
     return p if p else None
@@ -355,18 +347,14 @@ def safe_title(result_title: str) -> str:
 
 def process_urls_keep_order(urls):
     """
-    KHÁC transcript gốc:
-    - Nếu URL đã có trong youtube_results.json => lấy lại entry cũ (không bỏ qua),
-      để vẫn đảm bảo kết quả trả về có cùng số phần tử và đúng thứ tự mapping.
-    - Thêm sleep random giữa các video để tránh bị YouTube rate-limit (429),
-      đồng thời ghi log thời gian chờ.
+    - Nếu URL đã có trong youtube_results.json => lấy lại entry cũ (giữ thứ tự/mapping).
+    - Thêm sleep ngẫu nhiên giữa các video để tránh rate-limit.
     """
     existing_index, _ = load_existing_index('youtube_results.json')
     results = []
     total = len(urls)
-    print(f"\n{Colors.BOLD}Bắt đầu xử lý {total} video(s)...{Colors.ENDC}\n")
+    print(f"\n{Colors.BOLD}Bắt đầu xử lý {total} video(s).{Colors.ENDC}\n")
 
-    # Thiết lập khoảng thời gian chờ
     min_sleep = 20
     max_sleep = 25
 
@@ -375,49 +363,44 @@ def process_urls_keep_order(urls):
         vid = extract_video_id(url)
         if vid and vid in existing_index:
             r = existing_index[vid]
-            # đảm bảo có các key tối thiểu khi lấy từ index cũ
             r.setdefault('url', url)
             r.setdefault('status', 'success')
             results.append(r)
             print(f"\n{Colors.OKCYAN}↷ Dùng lại kết quả đã có: {url}{Colors.ENDC}")
             time.sleep(0.05)
         else:
-            # chưa có -> fetch mới
             r = get_video_info(url)
             results.append(r)
             print(f"\n{Colors.OKBLUE}{'OK' if r.get('status')=='success' else 'Lỗi'} - {url}{Colors.ENDC}")
             time.sleep(0.05)
 
-        # Nếu còn video phía sau thì nghỉ ngẫu nhiên và ghi log rõ ràng
         if i < total:
             wait_time = random.randint(min_sleep, max_sleep)
-            print(f"{Colors.WARNING}⏳ Đợi {wait_time} giây trước khi xử lý video tiếp theo...{Colors.ENDC}")
+            print(f"{Colors.WARNING}⏳ Đợi {wait_time} giây trước khi xử lý video tiếp theo.{Colors.ENDC}")
             time.sleep(wait_time)
 
     progress_bar(total, total, "Hoàn thành"); print()
     return results
 
-def assign_results_to_lctc(results, dest_dir, start_num, pad_width: int = 0):
+def assign_results_to_lctc(results, dest_dir, prefix, start_num, pad_width: int = 0):
     """
     Map tuần tự:
-      kết quả #1 -> LCTC-start
-      kết quả #2 -> LCTC-(start+1)
+      #1 -> <prefix>-start
+      #2 -> <prefix>-(start+1)
       ...
-    Lưu vào: LCTC-<n>/<safe_title>_<videoid>/{sub.txt, info.txt}
+    Lưu: <prefix>-<n>/<safe_title>_<videoid>/{sub.txt, info.txt}
     """
     assigned = 0
     for idx, r in enumerate(results):
         n = start_num + idx
-        lctc_dir = os.path.join(dest_dir, lctc_name(n, pad_width))
+        lctc_dir = os.path.join(dest_dir, make_name(prefix, n, pad_width))
         if not os.path.isdir(lctc_dir):
             print(f"{Colors.WARNING}⚠ Thiếu folder {lctc_dir} (bỏ qua).{Colors.ENDC}")
             continue
 
-        # Đích: ngay dưới LCTC-<n>
         target_base = lctc_dir
 
         if r.get('status') != 'success':
-            # vẫn ghi info lỗi để lần sau dễ tra
             folder = os.path.join(target_base, f"ERR_{idx+1:02d}")
             os.makedirs(folder, exist_ok=True)
             with open(os.path.join(folder,'info.txt'),'w',encoding='utf-8') as f:
@@ -432,14 +415,12 @@ def assign_results_to_lctc(results, dest_dir, start_num, pad_width: int = 0):
         sub = r.get('subtitles') or "Không có phụ đề"
         safe = safe_title(title)
 
-        # Thư mục theo yêu cầu: LCTC-XXX/<safe_title>_<videoid>/
         folder = os.path.join(target_base, f"{safe}_{vid}")
         os.makedirs(folder, exist_ok=True)
 
         sub_path = os.path.join(folder, 'sub.txt')
         info_path = os.path.join(folder, 'info.txt')
 
-        # không ghi đè nếu đã có cả 2
         if os.path.exists(sub_path) and os.path.exists(info_path):
             print(f"{Colors.OKCYAN}↷ Bỏ qua (đã tồn tại): {folder}{Colors.ENDC}")
             continue
@@ -449,14 +430,14 @@ def assign_results_to_lctc(results, dest_dir, start_num, pad_width: int = 0):
         with open(info_path,'w',encoding='utf-8') as f:
             f.write(f"Title: {title}\nVideo ID: {vid}\nURL: {r.get('url')}\n")
             f.write(f"Duration: {r.get('duration','N/A')} seconds\n")
-            f.write(f"MappedTo: {lctc_name(n, pad_width)}\n")
+            f.write(f"MappedTo: {make_name(prefix, n, pad_width)}\n")
 
         assigned += 1
         print(f"{Colors.OKGREEN}✓ Lưu vào: {folder}{Colors.ENDC}")
 
-    print(f"{Colors.OKGREEN if assigned else Colors.WARNING}→ Đã gán {assigned}/{len(results)} video vào LCTC.*{Colors.ENDC}")
+    print(f"{Colors.OKGREEN if assigned else Colors.WARNING}→ Đã gán {assigned}/{len(results)} video vào {prefix}-*.{Colors.ENDC}")
 
-# ===== Menu giống transcript.py
+# ===== Menu
 def display_menu():
     print(f"""
 {Colors.BOLD}Chọn một tùy chọn:{Colors.ENDC}
@@ -479,7 +460,7 @@ def main():
 
         if choice == '1':
             clear_screen(); print_banner()
-            fp = select_file()  # <-- mở pop-up chọn .txt
+            fp = select_file()
             if not fp:
                 input(f"\n{Colors.FAIL}Không thể chọn file. Enter để quay lại...{Colors.ENDC}")
                 continue
@@ -504,19 +485,20 @@ def main():
             input(f"\n{Colors.FAIL}Lựa chọn không hợp lệ. Enter để thử lại...{Colors.ENDC}")
             continue
 
-        # ===== Hỏi số bắt đầu & nơi lưu LCTC
+        # ===== Hỏi tiền tố & số bắt đầu
         print(f"\n{Colors.BOLD}Có {len(urls)} URL hợp lệ.{Colors.ENDC}")
+        prefix = input(f"{Colors.OKCYAN}Nhập TIỀN TỐ (prefix) [Enter = {DEFAULT_PREFIX}]: {Colors.ENDC}").strip() or DEFAULT_PREFIX
+
         while True:
             try:
-                start = int(input(f"{Colors.OKCYAN}Nhập số bắt đầu LCTC: {Colors.ENDC}").strip())
+                start = int(input(f"{Colors.OKCYAN}Nhập số bắt đầu cho {prefix}-*: {Colors.ENDC}").strip())
                 break
             except Exception:
                 print(f"{Colors.FAIL}Vui lòng nhập số nguyên hợp lệ.{Colors.ENDC}")
 
         end = start + len(urls) - 1
 
-        # ===== Hỏi padding (đặt ngay sau khi biết start & end)
-        # Gợi ý mặc định: số chữ số của 'end' (vd end=123 -> default=3)
+        # ===== Hỏi padding (gợi ý theo số chữ số của 'end')
         default_width = max(1, len(str(end)))
         raw = input(f"{Colors.OKCYAN}Nhập số chữ số padding (vd 3) [Enter = {default_width}]: {Colors.ENDC}").strip()
         try:
@@ -524,25 +506,23 @@ def main():
         except Exception:
             pad_width = default_width
 
-        dest = choose_directory_topmost("Chọn nơi lưu các LCTC-*")
+        dest = choose_directory_topmost(f"Chọn nơi lưu các {prefix}-*")
         if not dest:
             input(f"\n{Colors.FAIL}Bạn đã hủy chọn nơi lưu. Enter để quay lại...{Colors.ENDC}")
             continue
 
         # ===== 1) TẠO FOLDER TRƯỚC
-        print(f"\n{Colors.OKBLUE}Đang tạo thư mục {lctc_name(start,pad_width)} .. {lctc_name(end,pad_width)} ...{Colors.ENDC}")
-        total, created, skipped = build_lctc_range(dest, start, end, pad_width)
+        print(f"\n{Colors.OKBLUE}Đang tạo thư mục {make_name(prefix,start,pad_width)} .. {make_name(prefix,end,pad_width)} ...{Colors.ENDC}")
+        total, created, skipped = build_range(dest, prefix, start, end, pad_width)
         print(f"{Colors.OKGREEN}✓ Hoàn tất tạo folder (tổng {total}, mới {created}, tồn tại {skipped}).{Colors.ENDC}")
 
         # ===== 2) TRÍCH PHỤ ĐỀ (giữ thứ tự & tái dụng kết quả cũ)
         results = process_urls_keep_order(urls)
-
-        # Lưu/merge index tổng (để lần sau bỏ qua download)
         save_results_merge(results)
 
-        # ===== 3) GÁN SUB VÀO TỪNG LCTC TƯƠNG ỨNG
-        print(f"\n{Colors.OKBLUE}Đang gán phụ đề vào từng {lctc_name(start,pad_width)} .. {lctc_name(end,pad_width)}{Colors.ENDC}")
-        assign_results_to_lctc(results, dest, start, pad_width)
+        # ===== 3) GÁN SUB VÀO TỪNG <prefix>-<n>
+        print(f"\n{Colors.OKBLUE}Đang gán phụ đề vào từng {make_name(prefix,start,pad_width)} .. {make_name(prefix,end,pad_width)}{Colors.ENDC}")
+        assign_results_to_lctc(results, dest, prefix, start, pad_width)
 
         input(f"\n{Colors.OKCYAN}Xong! Nhấn Enter để quay lại menu...{Colors.ENDC}")
 
