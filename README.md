@@ -3,6 +3,20 @@
 **YouTube Video Info Extractor** is a command-line tool written in Python that helps you extract video information and Vietnamese subtitles from one or more YouTube links.
 
 -----
+## 🚀 Download
+[**Download the latest release (v3.0.0-alpha)**](https://github.com/giaquy2000and4/LCTC-tool-pack/releases/tag/v3.0.0-alpha)
+
+## 📥 Installation Guide
+1. Download `LCTC-Pipeline.exe` from the link above.
+2. Extract it if necessary (skip this step if it's a standalone `.exe`).
+3. Run the program
+
+## 📝 Changelog
+### v3.0.0-alpha
+- Fixed performance issues
+- Optimized UI
+- Added new features
+- Resolved "error 429 too many requests" for yt-dlp
 
 ## Features
 
