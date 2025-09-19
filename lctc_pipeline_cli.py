@@ -15,7 +15,14 @@ Main features:
 6) Save sub.txt & info.txt into <PREFIX>-<n>/<safe_title>_<videoid>/
 """
 
-import os, sys, re, json, time, shutil, subprocess, random
+import json
+import os
+import random
+import re
+import shutil
+import subprocess
+import sys
+import time
 
 # ---- Chặn biến môi trường có thể gây PermissionError (sslkeys) khi tải mạng
 os.environ.pop("SSLKEYLOGFILE", None)
