@@ -3,16 +3,16 @@
 
 """
 LCTC Pipeline CLI — one-file version
-- GỘP: tạo cấu trúc thư mục (từ make_lctc.py) + xử lý YouTube/ghi phụ đề (từ transcript.py)
-- MỚI: Cho phép đổi TIỀN TỐ (prefix) thay vì cố định 'LCTC' (mặc định vẫn là 'LCTC')
+- MERGE: create folder structure (from make_lctc.py) + YouTube processing/subtitle recording (from transcript.py)
+- NEW: Allow changing PREFIX instead of fixed 'LCTC' (default is still 'LCTC')
 
-Tính năng chính:
-1) Nhập 1 URL hoặc CHỌN FILE .TXT nhiều URL bằng pop-up (thứ tự link = thứ tự mapping)
-2) Nhập số bắt đầu -> tool tự tính số kết thúc theo số link
-3) Hỏi tiền tố (prefix) và độ dài zero-padding (vd 3 => <PREFIX>-001)
-4) Tạo loạt <PREFIX>-[start..end] + subfolders + file docx từ template (nếu có)
-5) Trích phụ đề YouTube (yt-dlp), merge youtube_results.json (không ghi đè)
-6) Lưu sub.txt & info.txt vào <PREFIX>-<n>/<safe_title>_<videoid>/
+Main features:
+1) Enter 1 URL or SELECT .TXT FILE with multiple URLs using pop-up (link order = mapping order)
+2) Enter start number -> tool automatically calculates end number based on link number
+3) Ask for prefix and zero-padding length (e.g. 3 => <PREFIX>-001)
+4) Generate series <PREFIX>-[start - end] + subfolders + docx file from template (if any)
+5) Extract YouTube subtitles (yt-dlp), merge youtube_results.json (no overwriting)
+6) Save sub.txt & info.txt into <PREFIX>-<n>/<safe_title>_<videoid>/
 """
 
 import os, sys, re, json, time, shutil, subprocess, random
@@ -472,7 +472,7 @@ def main():
 
         elif choice == '2':
 
-            clear_screen();
+            clear_screen()
             print_banner()
 
             print(f"{Colors.OKCYAN}Dán các URL YouTube (mỗi URL cách nhau bằng ENTER, dấu phẩy hoặc dấu cách).")
