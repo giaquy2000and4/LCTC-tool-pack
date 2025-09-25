@@ -18,6 +18,9 @@
 - Added new features
 - Resolved "error 429 too many requests" for yt-dlp
 
+### v3.1.0-alpha
+- Fixed "Requested format is not available"
+
 ## Features
 
   - Extracts title, ID, duration, and URL of YouTube videos
