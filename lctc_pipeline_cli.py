@@ -450,13 +450,15 @@ def display_menu():
 {Colors.BOLD}Chọn một tùy chọn:{Colors.ENDC}
 {Colors.OKGREEN}1.{Colors.ENDC} Chọn file .txt chứa danh sách URL (MỞ POP-UP)
 {Colors.OKGREEN}2.{Colors.ENDC} Nhập URL trực tiếp
-{Colors.OKGREEN}3.{Colors.ENDC} Thoát
+{Colors.OKGREEN}3.{Colors.ENDC} Cập nhật yt-dlp (tải bản mới nhất)
+{Colors.OKGREEN}4.{Colors.ENDC} Thoát
 
-{Colors.OKCYAN}Nhập lựa chọn (1-3): {Colors.ENDC}""", end="")
+{Colors.OKCYAN}Nhập lựa chọn (1-4): {Colors.ENDC}""", end="")
 
 def main():
     while True:
-        clear_screen(); print_banner()
+        clear_screen()
+        print_banner()
 
         if not check_yt_dlp():
             input(f"\n{Colors.FAIL}Thiếu yt-dlp. Nhấn Enter để thoát...{Colors.ENDC}")
@@ -476,44 +478,42 @@ def main():
                 input(f"\n{Colors.FAIL}Không có URL hợp lệ. Enter để quay lại...{Colors.ENDC}")
                 continue
 
-
         elif choice == '2':
-
             clear_screen()
             print_banner()
-
             print(f"{Colors.OKCYAN}Dán các URL YouTube (mỗi URL cách nhau bằng ENTER, dấu phẩy hoặc dấu cách).")
-
             print(f"Nhấn ENTER trống một lần nữa để kết thúc nhập:{Colors.ENDC}\n")
-
-            # Thu thập nhiều dòng từ người dùng cho tới khi gặp dòng trống
-
             lines = []
-
             while True:
-
                 line = input().strip()
-
                 if not line:
                     break
-
                 lines.append(line)
-
             raw_text = " ".join(lines)
-
-            # Tách URL theo dấu phẩy, dấu cách hoặc xuống dòng
-
             candidates = re.split(r'[,\s]+', raw_text)
-
             urls = [u for u in candidates if extract_video_id(u)]
-
             if not urls:
                 input(f"\n{Colors.FAIL}Không có URL hợp lệ. Enter để quay lại...{Colors.ENDC}")
-
                 continue
 
-
         elif choice == '3':
+            clear_screen()
+            print_banner()
+            print(f"{Colors.OKCYAN}⏳ Đang cập nhật yt-dlp...{Colors.ENDC}\n")
+            try:
+                subprocess.check_call([sys.executable, "-m", "pip", "install", "-U", "yt-dlp"])
+                print(f"\n{Colors.OKGREEN}✓ Đã cập nhật yt-dlp thành công!{Colors.ENDC}")
+                try:
+                    import yt_dlp
+                    print(f"{Colors.OKBLUE}Phiên bản yt-dlp hiện tại: {yt_dlp.__version__}{Colors.ENDC}")
+                except Exception:
+                    pass
+            except subprocess.CalledProcessError as e:
+                print(f"\n{Colors.FAIL}✗ Lỗi khi cập nhật yt-dlp: {e}{Colors.ENDC}")
+            input(f"\n{Colors.OKCYAN}Nhấn Enter để quay lại menu...{Colors.ENDC}")
+            continue
+
+        elif choice == '4':
             print(f"\n{Colors.OKGREEN}Tạm biệt!{Colors.ENDC}")
             break
 
@@ -533,8 +533,6 @@ def main():
                 print(f"{Colors.FAIL}Vui lòng nhập số nguyên hợp lệ.{Colors.ENDC}")
 
         end = start + len(urls) - 1
-
-        # ===== Hỏi padding (gợi ý theo số chữ số của 'end')
         default_width = max(1, len(str(end)))
         raw = input(f"{Colors.OKCYAN}Nhập số chữ số padding (vd 3) [Enter = {default_width}]: {Colors.ENDC}").strip()
         try:
@@ -547,16 +545,16 @@ def main():
             input(f"\n{Colors.FAIL}Bạn đã hủy chọn nơi lưu. Enter để quay lại...{Colors.ENDC}")
             continue
 
-        # ===== 1) TẠO FOLDER TRƯỚC
+        # ===== 1) TẠO FOLDER
         print(f"\n{Colors.OKBLUE}Đang tạo thư mục {make_name(prefix,start,pad_width)} .. {make_name(prefix,end,pad_width)} ...{Colors.ENDC}")
         total, created, skipped = build_range(dest, prefix, start, end, pad_width)
         print(f"{Colors.OKGREEN}✓ Hoàn tất tạo folder (tổng {total}, mới {created}, tồn tại {skipped}).{Colors.ENDC}")
 
-        # ===== 2) TRÍCH PHỤ ĐỀ (giữ thứ tự & tái dụng kết quả cũ)
+        # ===== 2) TRÍCH PHỤ ĐỀ
         results = process_urls_keep_order(urls)
         save_results_merge(results)
 
-        # ===== 3) GÁN SUB VÀO TỪNG <prefix>-<n>
+        # ===== 3) GÁN KẾT QUẢ
         print(f"\n{Colors.OKBLUE}Đang gán phụ đề vào từng {make_name(prefix,start,pad_width)} .. {make_name(prefix,end,pad_width)}{Colors.ENDC}")
         assign_results_to_lctc(results, dest, prefix, start, pad_width)
 
