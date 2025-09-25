@@ -238,21 +238,38 @@ def clean_subtitles(subtitle_content):
                 out.append(line)
     return "\n".join(out) or "Không thể trích xuất nội dung phụ đề"
 
-def get_vietnamese_subtitles_direct(info):
+def get_subtitles_fallback(info, primary_lang='vi', fallback_lang='en'):
     try:
         subs = info.get('subtitles', {}) or {}
         auto = info.get('automatic_captions', {}) or {}
-        urls = []
-        if 'vi' in subs: urls.append(subs['vi'][0]['url'])
-        if 'vi' in auto: urls.append(auto['vi'][0]['url'])
-        if 'vi-VN' in auto: urls.append(auto['vi-VN'][0]['url'])
-        for u in urls:
-            text = download_subtitle_content(u)
+
+        def get_sub_url(lang):
+            if lang in subs:
+                return subs[lang][0]['url']
+            if lang in auto:
+                return auto[lang][0]['url']
+            return None
+
+        # Thử phụ đề tiếng Việt trước
+        url = get_sub_url(primary_lang) or get_sub_url(primary_lang + '-VN')
+        if url:
+            text = download_subtitle_content(url)
             if text:
                 return clean_subtitles(text)
-        return "Không có phụ đề tiếng Việt"
+
+        # Nếu không có, thử fallback sang tiếng Anh
+        url = get_sub_url(fallback_lang)
+        if url:
+            text = download_subtitle_content(url)
+            if text:
+                return clean_subtitles(text + "\n\n(Nguồn phụ đề: Tiếng Anh - fallback)")
+
+        # Nếu vẫn không có gì
+        return "Không tìm thấy phụ đề tiếng Việt (video không có phụ đề hoặc chưa được hỗ trợ)."
+
     except Exception as e:
         return f"Lỗi khi tải phụ đề: {e}"
+
 
 def get_video_info(url):
     try:
@@ -273,7 +290,7 @@ def get_video_info(url):
                 'video_id': info.get('id','unknown'),
                 'duration': info.get('duration',0),
                 'url': url,
-                'subtitles': get_vietnamese_subtitles_direct(info),
+                'subtitles': get_subtitles_fallback(info),
                 'status': 'success'
             }
     except Exception as e:
@@ -450,10 +467,10 @@ def display_menu():
 {Colors.BOLD}Chọn một tùy chọn:{Colors.ENDC}
 {Colors.OKGREEN}1.{Colors.ENDC} Chọn file .txt chứa danh sách URL (MỞ POP-UP)
 {Colors.OKGREEN}2.{Colors.ENDC} Nhập URL trực tiếp
-{Colors.OKGREEN}3.{Colors.ENDC} Cập nhật yt-dlp (tải bản mới nhất)
-{Colors.OKGREEN}4.{Colors.ENDC} Thoát
+{Colors.OKGREEN}3.{Colors.ENDC} Thoát
 
-{Colors.OKCYAN}Nhập lựa chọn (1-4): {Colors.ENDC}""", end="")
+{Colors.OKCYAN}Nhập lựa chọn (1-3): {Colors.ENDC}""", end="")
+
 
 def main():
     while True:
@@ -496,24 +513,8 @@ def main():
                 input(f"\n{Colors.FAIL}Không có URL hợp lệ. Enter để quay lại...{Colors.ENDC}")
                 continue
 
-        elif choice == '3':
-            clear_screen()
-            print_banner()
-            print(f"{Colors.OKCYAN}⏳ Đang cập nhật yt-dlp...{Colors.ENDC}\n")
-            try:
-                subprocess.check_call([sys.executable, "-m", "pip", "install", "-U", "yt-dlp"])
-                print(f"\n{Colors.OKGREEN}✓ Đã cập nhật yt-dlp thành công!{Colors.ENDC}")
-                try:
-                    import yt_dlp
-                    print(f"{Colors.OKBLUE}Phiên bản yt-dlp hiện tại: {yt_dlp.__version__}{Colors.ENDC}")
-                except Exception:
-                    pass
-            except subprocess.CalledProcessError as e:
-                print(f"\n{Colors.FAIL}✗ Lỗi khi cập nhật yt-dlp: {e}{Colors.ENDC}")
-            input(f"\n{Colors.OKCYAN}Nhấn Enter để quay lại menu...{Colors.ENDC}")
-            continue
 
-        elif choice == '4':
+        elif choice == '3':
             print(f"\n{Colors.OKGREEN}Tạm biệt!{Colors.ENDC}")
             break
 
