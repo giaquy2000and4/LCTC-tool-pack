@@ -4,7 +4,7 @@
 
 -----
 ## 🚀 Download
-[**Download the latest release (v3.0.0-alpha)**](https://github.com/giaquy2000and4/LCTC-tool-pack/releases/tag/v3.0.0-alpha)
+[**Download the latest release**](https://github.com/giaquy2000and4/LCTC-tool-pack/releases)
 
 ## 📥 Installation Guide
 1. Download `LCTC-Pipeline.exe` from the link above.
@@ -17,6 +17,9 @@
 - Optimized UI
 - Added new features
 - Resolved "error 429 too many requests" for yt-dlp
+
+### v3.1.0-alpha
+- Fixed "Requested format is not available"
 
 ## Features
 
