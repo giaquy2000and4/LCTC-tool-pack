@@ -1,21 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-"""
-LCTC Pipeline GUI (CustomTkinter)
-Theme: Black-Cyan Dark Mode
-- MERGE: create folder structure (from make_lctc.py) + YouTube processing/subtitle recording (from transcript.py)
-- NEW: Allow changing PREFIX instead of fixed 'LCTC' (default is still 'LCTC')
-
-Main features:
-1) Enter 1 URL or SELECT .TXT FILE with multiple URLs using pop-up
-2) Enter start number -> tool automatically calculates end number based on link number
-3) Ask for prefix and zero-padding length (e.g. 3 => <PREFIX>-001)
-4) Generate series <PREFIX>-[start - end] + subfolders + docx file from template (if any)
-5) Extract YouTube subtitles (yt-dlp), merge youtube_results.json (no overwriting)
-6) Save sub.txt & info.txt into <PREFIX>-<n>/<safe_title>_<videoid>/
-"""
-
 import customtkinter as ctk
 from tkinter import filedialog, messagebox
 import os
@@ -307,23 +292,24 @@ def read_urls_from_file(file_path: str, log_func: Callable[[str, Optional[str]],
 class LCTCPipelineGUI:
     def __init__(self):
         ctk.set_appearance_mode("dark")
-        ctk.set_default_color_theme("blue")
+        ctk.set_default_color_theme("blue") # Keep 'blue' for default components not explicitly styled
 
         self.root = ctk.CTk()
         self.root.title("LCTC Pipeline")
         self.root.geometry("900x750")
         self.root.minsize(850, 650)
 
+        # Updated colors for YouTube Red theme
         self.colors = {
-            'bg': '#0a0e14',
-            'card': '#151b24',
-            'accent': '#00d9ff',
-            'accent_hover': '#00b8d4',
-            'text': '#ffffff',
-            'text_dim': '#7a8896',
-            'success': '#00ff9f',
-            'warning': '#ffa500',
-            'error': '#ff4757',
+            'bg': '#0a0e14',        # Dark background
+            'card': '#151b24',      # Slightly lighter card/panel background
+            'accent': '#FF0000',    # YouTube Red
+            'accent_hover': '#CC0000', # Darker YouTube Red for hover
+            'text': '#ffffff',      # White text
+            'text_dim': '#7a8896',  # Dimmed text
+            'success': '#00ff9f',   # Green for success
+            'warning': '#ffa500',   # Orange for warning
+            'error': '#ff4757',     # Existing error red (can be changed to #FF0000 if desired)
         }
         self.root.configure(fg_color=self.colors['bg'])
 
@@ -605,7 +591,7 @@ class LCTCPipelineGUI:
         elif color == "green":
             self.log_textbox.insert("end", f"{message}\n", "green_tag")
             self.log_textbox.tag_config("green_tag", foreground=self.colors['success'])
-        elif color == "blue":  # Custom blue for general info/process start
+        elif color == "blue":  # Custom blue for general info/process start, now uses accent color
             self.log_textbox.insert("end", f"{message}\n", "blue_tag")
             self.log_textbox.tag_config("blue_tag", foreground=self.colors['accent'])
         else:
